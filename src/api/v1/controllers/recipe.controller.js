@@ -1,7 +1,7 @@
 // src/api/v1/controllers/recipe.controller.js
 import crypto from 'crypto'
 import RecipeCache from '../models/recipeCache.model.js'
-import { generateRecipesWithGemini } from '../services/gemini.service.js'
+import * as geminiService from '../services/gemini.service.js'
 
 /**
  *
@@ -10,7 +10,7 @@ import { generateRecipesWithGemini } from '../services/gemini.service.js'
  * @returns
  */
 export const generateRecipes = async (req, res) => {
-  const { ingredients, mealType, diet } = req.body
+  const { ingredients, mealType, persons, diet } = req.body
 
   // 1. Validación de entrada
   if (!ingredients || ingredients.length === 0 || !mealType || !diet) {
@@ -22,6 +22,7 @@ export const generateRecipes = async (req, res) => {
   const requestString = JSON.stringify({
     ingredients: sortedIngredients,
     mealType,
+    persons,
     diet
   })
   const requestHash = crypto
@@ -39,22 +40,69 @@ export const generateRecipes = async (req, res) => {
 
     console.log('No hay caché. Llamando a Gemini...')
     // 4. Si no hay caché, llamar al servicio de Gemini
-    const recipesData = await generateRecipesWithGemini({
+    console.log('Paso 1: Obteniendo plan de comidas...')
+    const mealPlanResponse = await geminiService.createMealPlan({
       ingredients,
       mealType,
-      diet
+      persons
     })
 
-    // 5. Guardar el nuevo resultado en la caché
-    const newCacheEntry = new RecipeCache({
-      requestHash,
-      response: recipesData
-    })
-    await newCacheEntry.save()
-    console.log('Resultado guardado en caché.')
+    // Si la IA no encontró ningún plan viable, devolvemos un array vacío.
+    if (
+      !mealPlanResponse ||
+      !mealPlanResponse.mealPlan ||
+      mealPlanResponse.mealPlan.length === 0
+    ) {
+      console.log('La IA no encontró planes de comida viables.')
+      return res.status(200).json({ generatedRecipes: [] })
+    }
 
-    // 6. Enviar la respuesta al cliente
-    return res.status(200).json(recipesData)
+    const mealConcepts = mealPlanResponse.mealPlan
+    console.log(
+      `Paso 1 completado. Se encontraron ${mealConcepts.length} conceptos de recetas.`
+    )
+
+    // 5. PASO 2: Desarrollar cada receta del plan en paralelo
+    console.log('Paso 2: Desarrollando cada receta en paralelo...')
+    const recipeDevelopmentPromises = mealConcepts.map((concept) =>
+      geminiService.createRecipeDevelopment(concept, persons, { diet })
+    )
+    const settledResults = await Promise.allSettled(recipeDevelopmentPromises)
+
+    const successfulRecipes = []
+    settledResults.forEach((result, index) => {
+      if (result.status === 'fulfilled') {
+        successfulRecipes.push(result.value)
+      } else {
+        console.error(
+          `Falló el desarrollo de la receta para el concepto '${mealConcepts[index].mealTitle}':`,
+          result.reason
+        )
+      }
+    })
+
+    console.log(
+      `Paso 2 completado. Se desarrollaron con éxito ${successfulRecipes.length} recetas.`
+    )
+
+    // 6. Formatear la respuesta final
+    const finalResponse = { generatedRecipes: successfulRecipes }
+
+    // 7. Guardar el resultado final agregado en la caché
+    if (successfulRecipes && successfulRecipes.length > 0) {
+      const newCacheEntry = new RecipeCache({
+        requestHash,
+        response: finalResponse
+      })
+      await newCacheEntry.save()
+      console.log(
+        `Respuesta con ${successfulRecipes.length} recetas guardada en caché.`
+      )
+    } else {
+      console.log('Respuesta vacía o fallida, no se guardará en caché.')
+    }
+
+    return res.status(200).json(finalResponse)
   } catch (error) {
     console.error('Error en el controlador de recetas:', error)
     return res.status(500).json({ message: 'Error interno del servidor.' })
