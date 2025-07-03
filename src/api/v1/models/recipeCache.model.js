@@ -1,4 +1,4 @@
-import mongoose from 'mongoose';
+import mongoose from 'mongoose'
 
 const RecipeCacheSchema = new mongoose.Schema(
   {
@@ -6,18 +6,18 @@ const RecipeCacheSchema = new mongoose.Schema(
       type: String,
       required: true,
       unique: true,
-      index: true,
+      index: true
     },
     response: {
       type: Object,
-      required: true,
-    },
+      required: true
+    }
   },
   {
-    timestamps: true,
+    timestamps: true
   }
-);
+)
 
-const RecipeCache = mongoose.model('RecipeCache', RecipeCacheSchema);
+const RecipeCache = mongoose.model('RecipeCache', RecipeCacheSchema)
 
-export default RecipeCache;
+export default RecipeCache

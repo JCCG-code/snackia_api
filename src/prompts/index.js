@@ -1,1 +1,1 @@
-export * from './recipes.prompts.js';
+export * from './recipes.prompts.js'
