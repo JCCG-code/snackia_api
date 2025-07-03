@@ -12,5 +12,5 @@ connectDB()
 
 // Starts API
 app.listen(PORT, () => {
-  console.log(`SnakIA API escuchando en el puerto ${PORT}`)
+  console.log(`SnackIA API escuchando en el puerto ${PORT}`)
 })
