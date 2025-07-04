@@ -2,6 +2,7 @@
 import crypto from 'crypto'
 import RecipeCache from '../models/recipeCache.model.js'
 import * as geminiService from '../services/gemini.service.js'
+import * as imagenService from '../services/imagen.service.js'
 
 /**
  *
@@ -62,11 +63,27 @@ export const generateRecipes = async (req, res) => {
       `Paso 1 completado. Se encontraron ${mealConcepts.length} conceptos de recetas.`
     )
 
-    // 5. PASO 2: Desarrollar cada receta del plan en paralelo
+    // Developing recipes
     console.log('Paso 2: Desarrollando cada receta en paralelo...')
-    const recipeDevelopmentPromises = mealConcepts.map((concept) =>
-      geminiService.createRecipeDevelopment(concept, persons, { diet })
-    )
+    const recipeDevelopmentPromises = mealConcepts.map(async (concept) => {
+      const recipeDetailsInSpanish =
+        // Get recipe
+        await geminiService.createRecipeDevelopment(concept, persons, {
+          diet
+        })
+      // Translate to English
+      const translatedTexts = await imagenService.translateTextForImagePrompt(
+        recipeDetailsInSpanish.name,
+        recipeDetailsInSpanish.description
+      )
+      // Creates image
+      const imageUrl = await imagenService.createRecipeImage(translatedTexts)
+      // Return statement
+      return {
+        ...recipeDetailsInSpanish,
+        imageUrl: imageUrl
+      }
+    })
     const settledResults = await Promise.allSettled(recipeDevelopmentPromises)
 
     const successfulRecipes = []
